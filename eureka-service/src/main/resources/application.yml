@@ -1,0 +1,6 @@
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+    eureka-server-connect-timeout-seconds: 0
+    
