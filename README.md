@@ -1,6 +1,96 @@
 # Microservices Intercommunication
 
+<p align="center">
+  <img src="docs/images/hero-discovery.jpg" alt="Three stations in a night-time discovery hall: cyan client desk, golden registry tower, green provider capsule" width="100%">
+</p>
+
+<p align="center">
+  <strong>Three Spring Boot services. One registry. Calls by name, not by host.</strong><br>
+  <code>hello-client</code> asks Eureka where <code>hello-server</code> lives, then talks to it.
+</p>
+
+<p align="center">
+  <a href="#meet-the-services">Meet the services</a> ·
+  <a href="#how-they-talk">How they talk</a> ·
+  <a href="#how-to-run">Run it</a> ·
+  <a href="#api-reference">API reference</a> ·
+  <a href="#tests">Tests</a>
+</p>
+
+---
+
 Spring Boot services that register with Netflix Eureka and talk to each other by **service name**, not by hardcoded host and port.
+
+This repository is a small working example of:
+
+- a Eureka **server** (service registry)
+- a Eureka **provider** (`hello-server`)
+- a Eureka **consumer** (`hello-client`) that uses a load-balanced `RestTemplate`
+
+---
+
+## Meet the services
+
+Click a station. Start **eureka-service** first, then the provider, then the consumer.
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <a href="#eureka-service">
+        <img src="docs/images/svc-eureka.jpg" alt="Golden service-registry directory wall with green status lights">
+      </a><br>
+      <strong><a href="#eureka-service">eureka-service</a></strong><br>
+      Registry + dashboard<br>
+      port <code>8070</code>
+    </td>
+    <td align="center" width="33%">
+      <a href="#hello-server">
+        <img src="docs/images/svc-hello-server.jpg" alt="Green workshop with a finished greeting capsule on a pedestal">
+      </a><br>
+      <strong><a href="#hello-server">hello-server</a></strong><br>
+      Provider API<br>
+      port <code>8071</code>
+    </td>
+    <td align="center" width="33%">
+      <a href="#hello-client">
+        <img src="docs/images/svc-hello-client.jpg" alt="Cyan glass reception desk forwarding a request packet">
+      </a><br>
+      <strong><a href="#hello-client">hello-client</a></strong><br>
+      Consumer / entry point<br>
+      port <code>8072</code>
+    </td>
+  </tr>
+</table>
+
+| Service | `spring.application.name` | Port | Registers with Eureka? | Role |
+|---|---|---|---|---|
+| [`eureka-service`](#eureka-service) | `eureka-service` | **8070** | No (`register-with-eureka: false`) | Registry + dashboard |
+| [`hello-server`](#hello-server) | `hello-server` | **8071** | Yes | Provider |
+| [`hello-client`](#hello-client) | `hello-client` | **8072** | Yes | Consumer |
+
+Eureka clients use:
+
+```yaml
+eureka.client.serviceUrl.defaultZone: http://localhost:8070/eureka/
+```
+
+`hello-client` does **not** call `http://localhost:8071/...`. It calls:
+
+```text
+http://hello-server/rest/hello/server
+```
+
+Ribbon resolves the hostname `hello-server` from the Eureka registry to a real instance (`localhost:8071`).
+
+---
+
+## How they talk
+
+<p align="center">
+  <img src="docs/images/call-flow.jpg" alt="A teal request racing through a glass tunnel, looking up a golden registry sphere, then continuing to a green provider cube" width="100%">
+</p>
+
+A caller hits the cyan desk. The desk looks up the golden directory. The directory points at the green workshop. The greeting comes back the same way.
 
 ```
 Browser / curl
@@ -22,11 +112,29 @@ Browser / curl
  hello-server  (:8071)  -->  "Hello-from-server"
 ```
 
-This repository is a small working example of:
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Client as hello-client :8072
+    participant Eureka as eureka-service :8070
+    participant Server as hello-server :8071
 
-- a Eureka **server** (service registry)
-- a Eureka **provider** (`hello-server`)
-- a Eureka **consumer** (`hello-client`) that uses a load-balanced `RestTemplate`
+    Caller->>Client: GET /rest/hello/client
+    Client->>Eureka: fetch registry (hello-server)
+    Eureka-->>Client: instance localhost:8071
+    Client->>Server: GET /rest/hello/server
+    Server-->>Client: Hello-from-server
+    Client-->>Caller: Hello-from-server
+```
+
+Typical first-time timing:
+
+1. Eureka starts on `:8070`.
+2. `hello-server` starts, registers, heartbeat every 30s.
+3. `hello-client` starts, fetches the registry (it may take a few seconds before `hello-server` is visible).
+4. `GET http://localhost:8072/rest/hello/client` returns `Hello-from-server`.
+
+If you call the client **immediately** after boot and get an error, wait ~5–10 seconds for registration + fetch, then retry.
 
 ---
 
@@ -38,6 +146,7 @@ micro-services/
 ├── hello-server/       Provider API registered as "hello-server"
 ├── hello-client/       Consumer API registered as "hello-client"
 ├── WritersNBooks/      Separate JAX-RS sample (not part of this flow)
+├── docs/images/        README illustrations
 └── README.md
 ```
 
@@ -79,31 +188,11 @@ java -version
 
 ---
 
-## Ports and application names
-
-| Service | `spring.application.name` | Port | Registers with Eureka? | Role |
-|---|---|---|---|---|
-| `eureka-service` | `eureka-service` | **8070** | No (`register-with-eureka: false`) | Registry + dashboard |
-| `hello-server` | `hello-server` | **8071** | Yes | Provider |
-| `hello-client` | `hello-client` | **8072** | Yes | Consumer |
-
-Eureka clients use:
-
-```yaml
-eureka.client.serviceUrl.defaultZone: http://localhost:8070/eureka/
-```
-
-`hello-client` does **not** call `http://localhost:8071/...`. It calls:
-
-```text
-http://hello-server/rest/hello/server
-```
-
-Ribbon resolves the hostname `hello-server` from the Eureka registry to a real instance (`localhost:8071`).
-
----
-
 ## How to run
+
+<p align="center">
+  <img src="docs/images/start-sequence.jpg" alt="Three consoles lighting up in order: gold registry, green provider, dim cyan client still waiting" width="100%">
+</p>
 
 Start **Eureka first**, then the server, then the client. Clients fail or retry if the registry is down.
 
@@ -143,7 +232,20 @@ DiscoveryClient_HELLO-SERVER/... - registration status: 204
 
 All APIs are **GET**, no request body, no authentication.
 
-### 1. Eureka dashboard
+### eureka-service
+
+<img src="docs/images/svc-eureka.jpg" alt="Eureka registry directory" width="280" align="right">
+
+The registry. It does **not** register with itself. Open the dashboard after the other two apps start — you should see **HELLO-SERVER** and **HELLO-CLIENT** in status **UP**.
+
+- Module: `eureka-service/`
+- Name: `eureka-service`
+- Port: **8070**
+- Registers with Eureka: no
+
+<br clear="all">
+
+#### 1. Eureka dashboard
 
 Human-readable registry UI.
 
@@ -159,11 +261,7 @@ open http://localhost:8070/
 curl -i http://localhost:8070/
 ```
 
-You should see applications **HELLO-SERVER** and **HELLO-CLIENT** in status **UP** after both clients start.
-
----
-
-### 2. Eureka — list all registered applications
+#### 2. Eureka — list all registered applications
 
 Machine-readable registry (XML by default).
 
@@ -206,9 +304,7 @@ JSON instead of XML:
 curl -i -H "Accept: application/json" http://localhost:8070/eureka/apps
 ```
 
----
-
-### 3. Eureka — one application
+#### 3. Eureka — one application
 
 | | |
 |---|---|
@@ -225,9 +321,18 @@ curl -i http://localhost:8070/eureka/apps/HELLO-CLIENT
 
 ---
 
-### 4. hello-server — provider API
+### hello-server
 
-This is the service that actually produces the greeting.
+<img src="docs/images/svc-hello-server.jpg" alt="hello-server greeting workshop" width="280" align="right">
+
+This is the service that actually produces the greeting. Call this URL directly when you want to test the provider **without** discovery.
+
+- Module: `hello-server/`
+- Name: `hello-server`
+- Port: **8071**
+- Registers with Eureka: yes
+
+<br clear="all">
 
 | | |
 |---|---|
@@ -266,13 +371,20 @@ public class HelloResource {
 }
 ```
 
-Call this URL directly when you want to test the provider **without** discovery.
-
 ---
 
-### 5. hello-client — consumer API (the intended entry point)
+### hello-client
+
+<img src="docs/images/svc-hello-client.jpg" alt="hello-client reception desk" width="280" align="right">
 
 This is the API a front-end or API caller should use. The client looks up `hello-server` in Eureka and forwards the call.
+
+- Module: `hello-client/`
+- Name: `hello-client`
+- Port: **8072**
+- Registers with Eureka: yes
+
+<br clear="all">
 
 | | |
 |---|---|
@@ -306,34 +418,6 @@ return restTemplate.getForObject(url, String.class);
 ```
 
 The `RestTemplate` bean is `@LoadBalanced`, so `hello-server` is a **virtual hostname** (the Eureka VIP / Spring application name), not a DNS name.
-
----
-
-## End-to-end call flow
-
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant Client as hello-client :8072
-    participant Eureka as eureka-service :8070
-    participant Server as hello-server :8071
-
-    Caller->>Client: GET /rest/hello/client
-    Client->>Eureka: fetch registry (hello-server)
-    Eureka-->>Client: instance localhost:8071
-    Client->>Server: GET /rest/hello/server
-    Server-->>Client: Hello-from-server
-    Client-->>Caller: Hello-from-server
-```
-
-Typical first-time timing:
-
-1. Eureka starts on `:8070`.
-2. `hello-server` starts, registers, heartbeat every 30s.
-3. `hello-client` starts, fetches the registry (it may take a few seconds before `hello-server` is visible).
-4. `GET http://localhost:8072/rest/hello/client` returns `Hello-from-server`.
-
-If you call the client **immediately** after boot and get an error, wait ~5–10 seconds for registration + fetch, then retry.
 
 ---
 
@@ -428,3 +512,7 @@ These projects target Java 8, but JAXB (`javax.xml.bind`) was removed from the J
 - `javax.activation:javax.activation-api`
 
 That is why a JDK 11 runtime works with the current POMs.
+
+---
+
+<p align="center"><sub>Illustrations generated for this repo. They are mood pieces, not screenshots of the running app.</sub></p>
